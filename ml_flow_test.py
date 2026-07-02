@@ -11,6 +11,9 @@ import torch.optim as optim
 import mlflow
 import mlflow.pytorch
 
+# Force MLflow tracking to localhost:5000
+os.environ["MLFLOW_TRACKING_URI"] = "http://localhost:5000"
+
 # Set experiment name (equivalent to off_test.py pattern)
 mlflow.set_experiment("Seizure Recognition")
 
@@ -132,7 +135,7 @@ def train(args):
         # Log results
         print(f"Epoch {epoch}/{args.epochs} | train_loss={avg_train_loss:.4f} | val_loss={avg_val_loss:.4f}")
         
-        # Always log metrics (MLflow active context auto-logs if run is active)
+        # Force log metrics to MLflow (no conditional)
         mlflow.log_metric("train_loss", float(avg_train_loss), step=epoch)
         mlflow.log_metric("val_loss", float(avg_val_loss), step=epoch)
         
@@ -156,29 +159,27 @@ def train(args):
         "best_val_loss": float(best_val_loss),
     }
     
-    # Autolog will handle model logging; no explicit call needed
-    if args.mlflow:
-        print("✓ Model auto-logged to MLflow (via pytorch.autolog)")
-        result["mlflow_artifact_path"] = "eeg_model"
+    # Model auto-logged by autolog
+    print("✓ Model auto-logged to MLflow (via pytorch.autolog)")
+    result["mlflow_artifact_path"] = "eeg_model"
     
     # Save metadata
     meta_path = os.path.join(args.output_dir, "metadata.json")
     with open(meta_path, "w") as f:
-        json.dump({"mlflow_enabled": args.mlflow, **result}, f, indent=2)
+        json.dump({"mlflow_enabled": True, **result}, f, indent=2)
     print(f"Metadata saved to {meta_path}")
     
     return result
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Seizure recognition with PyTorch + MLflow")
+    p = argparse.ArgumentParser(description="Seizure recognition with PyTorch + MLflow (always logs)")
     p.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
     p.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     p.add_argument("--batch-size", dest="batch_size", type=int, default=32, help="Batch size")
     p.add_argument("--seq-len", dest="seq_len", type=int, default=256, help="Sequence length")
     p.add_argument("--output-dir", dest="output_dir", default="models", help="Output directory for weights")
     p.add_argument("--csv-path", dest="csv_path", default=None, help="Path to CSV data (optional)")
-    p.add_argument("--mlflow", action="store_true", help="Enable MLflow logging")
     p.add_argument("--cpu", action="store_true", help="Force CPU usage")
     return p.parse_args()
 
@@ -186,24 +187,23 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     
-    if args.mlflow:
-        mlflow_uri = os.environ.get("MLFLOW_TRACKING_URI", "(not set)")
-        print(f"MLflow tracking URI: {mlflow_uri}")
-        # Enable autologging for PyTorch
-        mlflow.pytorch.autolog()
-        mlflow.start_run()
-        mlflow.log_params({
-            "epochs": args.epochs,
-            "lr": args.lr,
-            "batch_size": args.batch_size,
-            "seq_len": args.seq_len,
-        })
+    # Always enable autologging and start tracking
+    mlflow_uri = os.environ.get("MLFLOW_TRACKING_URI", "(not set)")
+    print(f"MLflow tracking URI: {mlflow_uri}")
+    
+    mlflow.pytorch.autolog()
+    mlflow.start_run()
+    mlflow.log_params({
+        "epochs": args.epochs,
+        "lr": args.lr,
+        "batch_size": args.batch_size,
+        "seq_len": args.seq_len,
+    })
     
     result = train(args)
     
-    if args.mlflow:
-        mlflow.end_run()
-        print("MLflow run ended.")
+    mlflow.end_run()
+    print("MLflow run ended.")
     
     print("\n✓ Training complete. Results:")
     for k, v in result.items():
