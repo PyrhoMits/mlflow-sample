@@ -11,6 +11,9 @@ import torch.optim as optim
 import mlflow
 import mlflow.pytorch
 
+# Set experiment name (equivalent to off_test.py pattern)
+mlflow.set_experiment("Seizure Recognition")
+
 
 def load_epileptic_seizure_data(csv_path, seq_len=256, test_size=0.2):
     """Load real seizure data from CSV or generate synthetic."""
@@ -76,6 +79,7 @@ class SimpleEEGNet(nn.Module):
 
 
 def train(args):
+    """Train seizure recognition model with autologging support."""
     device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
     print(f"Using device: {device}")
     
@@ -128,9 +132,9 @@ def train(args):
         # Log results
         print(f"Epoch {epoch}/{args.epochs} | train_loss={avg_train_loss:.4f} | val_loss={avg_val_loss:.4f}")
         
-        if args.mlflow:
-            mlflow.log_metric("train_loss", float(avg_train_loss), step=epoch)
-            mlflow.log_metric("val_loss", float(avg_val_loss), step=epoch)
+        # Always log metrics (MLflow active context auto-logs if run is active)
+        mlflow.log_metric("train_loss", float(avg_train_loss), step=epoch)
+        mlflow.log_metric("val_loss", float(avg_val_loss), step=epoch)
         
         # Save best model
         if avg_val_loss < best_val_loss:
@@ -152,14 +156,10 @@ def train(args):
         "best_val_loss": float(best_val_loss),
     }
     
-    # Log model to MLflow if enabled
+    # Autolog will handle model logging; no explicit call needed
     if args.mlflow:
-        try:
-            mlflow.pytorch.log_model(model, "eeg_model")
-            print("✓ Model logged to MLflow artifact path 'eeg_model'")
-            result["mlflow_artifact_path"] = "eeg_model"
-        except Exception as e:
-            print(f"MLflow model logging failed: {e}")
+        print("✓ Model auto-logged to MLflow (via pytorch.autolog)")
+        result["mlflow_artifact_path"] = "eeg_model"
     
     # Save metadata
     meta_path = os.path.join(args.output_dir, "metadata.json")
@@ -189,6 +189,8 @@ if __name__ == "__main__":
     if args.mlflow:
         mlflow_uri = os.environ.get("MLFLOW_TRACKING_URI", "(not set)")
         print(f"MLflow tracking URI: {mlflow_uri}")
+        # Enable autologging for PyTorch
+        mlflow.pytorch.autolog()
         mlflow.start_run()
         mlflow.log_params({
             "epochs": args.epochs,
